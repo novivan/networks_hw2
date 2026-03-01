@@ -6,9 +6,19 @@ import (
 	"os"
 	"strconv"
 	"strings"
+
+	"github.com/novivan/networks_hw2/internal/pcap"
 )
 
-type Dialoger struct{}
+type Dialoger struct {
+	processer pcap.PCAP_processer
+}
+
+func NewDialoger() Dialoger {
+	return Dialoger{
+		processer: pcap.NewPCAP_processer(),
+	}
+}
 
 func (d Dialoger) Run() error {
 	var wanna_break bool = false
@@ -23,6 +33,10 @@ func (d Dialoger) Run() error {
 		switch inp {
 		case "capture":
 			fmt.Println("capturing ARPs...")
+			_, err := d.processer.Handle_all_packets()
+			if err != nil {
+				fmt.Printf("Error capturing packets: %v\n", err)
+			}
 		case "router_mac":
 			fmt.Println("finding router mac address...")
 		case "exit":

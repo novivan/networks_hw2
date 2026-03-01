@@ -7,12 +7,11 @@ import (
 )
 
 func main() {
-	d := dialoger.Dialoger{}
+	d := dialoger.NewDialoger()
 	err := d.Run()
 	if err != nil {
-		fmt.Printf("Работа приложения завершилась с ошибкой: %w\n", err)
+		fmt.Printf("Работа приложения завершилась с ошибкой: %v\n", err)
 	} else {
 		fmt.Println("Работа приложения завершилась успешно!")
 	}
-
 }
