@@ -2,11 +2,17 @@ package main
 
 import (
 	"fmt"
+
+	"github.com/novivan/networks_hw2/internal/dialoger"
 )
 
 func main() {
-	var a int
-	fmt.Scan(&a)
+	d := dialoger.Dialoger{}
+	err := d.Run()
+	if err != nil {
+		fmt.Printf("Работа приложения завершилась с ошибкой: %w\n", err)
+	} else {
+		fmt.Println("Работа приложения завершилась успешно!")
+	}
 
-	fmt.Printf("%d\n", a * a + 2)
 }
