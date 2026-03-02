@@ -32,7 +32,37 @@ public class Dialoger {
                     break;
                     
                 case "router_mac":
-                    System.out.println("finding router mac address...");
+                    System.out.println("Определение MAC-адреса роутера...");
+                    System.out.println();
+                    System.out.println("Для нахождения IP-адреса роутера можно использовать команду:");
+                    System.out.println("   netstat -rn | grep default"); // из-за мака...
+                    System.out.println();
+                    System.out.print("Введите IP-адрес роутера: ");
+                    String routerIp = reader.nextLine().trim();
+                    
+                    if (routerIp.isEmpty()) {
+                        System.out.println("IP-адрес не введён");
+                        break;
+                    }
+                    
+                    if (!isValidIpAddress(routerIp)) {
+                        System.out.println("Некорректный формат IP-адреса");
+                        break;
+                    }
+                    
+                    System.out.println();
+                    try {
+                        String mac = processer.getRouterMac(routerIp);
+                        if (mac != null) {
+                            System.out.println();
+                            System.out.println();
+                            System.out.println("РЕЗУЛЬТАТ: MAC-адрес роутера (" + routerIp + "): " + mac);
+                            System.out.println("----------------------------------------");
+                        }
+                    } catch (Exception e) {
+                        System.out.printf("Ошибка при получении MAC-адреса: %s%n", e.getMessage());
+                        e.printStackTrace();
+                    }
                     break;
                     
                 case "exit":
@@ -62,5 +92,29 @@ public class Dialoger {
             }
         }
         reader.close();
+    }
+    
+    /**
+     * Проверяет корректность формата IPv4 адреса
+     */
+    private boolean isValidIpAddress(String ip) {
+        if (ip == null || ip.isEmpty()) {
+            return false;
+        }
+        String[] parts = ip.split("\\.");
+        if (parts.length != 4) {
+            return false;
+        }
+        try {
+            for (String part : parts) {
+                int value = Integer.parseInt(part);
+                if (value < 0 || value > 255) {
+                    return false;
+                }
+            }
+            return true;
+        } catch (NumberFormatException e) {
+            return false;
+        }
     }
 }

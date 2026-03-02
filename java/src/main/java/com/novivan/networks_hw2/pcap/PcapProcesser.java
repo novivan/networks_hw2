@@ -1,6 +1,9 @@
 package com.novivan.networks_hw2.pcap;
 
+import java.net.InetAddress;
+import java.net.NetworkInterface;
 import java.util.Arrays;
+import java.util.concurrent.atomic.AtomicReference;
 
 import org.pcap4j.core.BpfProgram;
 import org.pcap4j.core.PacketListener;
@@ -122,11 +125,6 @@ public class PcapProcesser {
                     sender_hardware_adress += ((long)sender_hardware_adress_bytes[i] & 0xFF) << (BYTE_SIZE * (HARDWARE_ADDRESS_SIZE - 1 - i));
                 }
                 System.out.println("\t\tSender hardware address - " + formatMac(sender_hardware_adress, HARDWARE_ADDRESS_SIZE));
-                System.out.printf("\t\t");
-                for (int i = 0; i < HARDWARE_ADDRESS_SIZE; i++) {
-                    System.out.printf("%02x ", sender_hardware_adress_bytes[i]);
-                }
-                System.out.printf("\n");
                 current_shift += HARDWARE_ADDRESS_SIZE;
                 
                 byte[] sender_protocol_address_bytes = Arrays.copyOfRange(raw, current_shift, current_shift + PROTOCOL_ADDRESS_SIZE);
@@ -143,11 +141,6 @@ public class PcapProcesser {
                     target_hardware_address += ((long)target_hardware_address_bytes[i] & 0xFF) << (BYTE_SIZE * (HARDWARE_ADDRESS_SIZE - 1 - i));
                 }
                 System.out.println("\t\tTarget hardware address - " + formatMac(target_hardware_address, HARDWARE_ADDRESS_SIZE));
-                System.out.printf("\t\t");
-                for (int i = 0; i < HARDWARE_ADDRESS_SIZE; i++) {
-                    System.out.printf("%02x ", target_hardware_address_bytes[i]);
-                }
-                System.out.printf("\n");
                 current_shift += HARDWARE_ADDRESS_SIZE;
 
                 byte[] target_protocol_address_bytes = Arrays.copyOfRange(raw, current_shift, current_shift + PROTOCOL_ADDRESS_SIZE);
@@ -176,6 +169,119 @@ public class PcapProcesser {
         }
         return null;
     }
+
+    public String getRouterMac(String targetIp) throws Exception {
+        PcapNetworkInterface nif = Pcaps.getDevByName(DEVICE);
+        if (nif == null) {
+            System.err.println("Сетевой интерфейс не найден");
+            return null;
+        }
+
+        NetworkInterface netIf = NetworkInterface.getByName(DEVICE);
+        byte[] ourMac = netIf.getHardwareAddress();
+        if (ourMac == null) {
+            System.err.println("Не удалось получить MAC-адрес интерфейса");
+            return null;
+        }
+
+        InetAddress ourIp = null;
+        var addresses = netIf.getInetAddresses();
+        while (addresses.hasMoreElements()) {
+            InetAddress addr = addresses.nextElement();
+            if (addr.getAddress().length == 4) { // IPv4
+                ourIp = addr;
+                break;
+            }
+        }
+        if (ourIp == null) {
+            System.err.println("Не удалось получить IP-адрес интерфейса");
+            return null;
+        }
+
+        InetAddress targetInetAddr = InetAddress.getByName(targetIp);
+        byte[] targetIpBytes = targetInetAddr.getAddress();
+
+        byte[] arpRequest = buildArpRequest(ourMac, ourIp.getAddress(), targetIpBytes);
+
+        System.out.println("Отправка ARP-запроса для IP: " + targetIp);
+        System.out.println("Наш MAC: " + formatMacBytes(ourMac));
+        System.out.println("Наш IP: " + ourIp.getHostAddress());
+
+        AtomicReference<String> resultMac = new AtomicReference<>(null);
+
+        try (PcapHandle sendHandle = nif.openLive(SNAPLEN, PcapNetworkInterface.PromiscuousMode.PROMISCUOUS, TIMEOUT);
+             PcapHandle receiveHandle = nif.openLive(SNAPLEN, PcapNetworkInterface.PromiscuousMode.PROMISCUOUS, 5000)) {
+            
+            receiveHandle.setFilter("arp and arp[6:2] = 2", BpfProgram.BpfCompileMode.OPTIMIZE);
+
+            sendHandle.sendPacket(arpRequest);
+            System.out.println("ARP-запрос отправлен!");
+
+            long startTime = System.currentTimeMillis();
+            while (System.currentTimeMillis() - startTime < 5000) {
+                try {
+                    var packet = receiveHandle.getNextPacket();
+                    if (packet != null) {
+                        byte[] raw = packet.getRawData();
+                        if (raw.length >= 42) {
+                            int operation = ((raw[20] & 0xFF) << 8) | (raw[21] & 0xFF);
+                            if (operation == 2) {
+                                byte[] senderIp = Arrays.copyOfRange(raw, 28, 32);
+                                if (Arrays.equals(senderIp, targetIpBytes)) {
+                                    byte[] senderMac = Arrays.copyOfRange(raw, 22, 28);
+                                    resultMac.set(formatMacBytes(senderMac));
+                                    System.out.println("\nПолучен ARP-ответ!");
+                                    System.out.println("MAC-адрес " + targetIp + ": " + resultMac.get());
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                } catch (Exception e) {}
+            }
+
+            if (resultMac.get() == null) {
+                System.out.println("Не удалось получить ARP-ответ в течение 5 секунд");
+            }
+        }
+
+        return resultMac.get();
+    }
+
+    private byte[] buildArpRequest(byte[] senderMac, byte[] senderIp, byte[] targetIp) {
+        byte[] packet = new byte[42];
+
+        Arrays.fill(packet, 0, 6, (byte) 0xFF);
+
+        System.arraycopy(senderMac, 0, packet, 6, 6);
+
+        packet[12] = 0x08;
+        packet[13] = 0x06;
+        packet[14] = 0x00;
+        packet[15] = 0x01;
+        packet[16] = 0x08;
+        packet[17] = 0x00;
+        packet[18] = 0x06;
+        packet[19] = 0x04;
+        packet[20] = 0x00;
+        packet[21] = 0x01;
+        System.arraycopy(senderMac, 0, packet, 22, 6);
+        System.arraycopy(senderIp, 0, packet, 28, 4);
+        Arrays.fill(packet, 32, 38, (byte) 0x00);
+        System.arraycopy(targetIp, 0, packet, 38, 4);
+
+        return packet;
+    }
+
+    private static String formatMacBytes(byte[] mac) {
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; i < mac.length; i++) {
+            sb.append(String.format("%02x", mac[i] & 0xFF));
+            if (i < mac.length - 1) sb.append(":");
+        }
+        return sb.toString();
+    }
+
     private static String formatMac(long data) {
         return formatMac(data, 6);
     }
