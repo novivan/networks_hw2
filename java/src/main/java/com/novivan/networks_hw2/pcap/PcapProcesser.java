@@ -15,7 +15,7 @@ public class PcapProcesser {
     private static final String FILTER = "arp";
     private static final int SNAPLEN = 500;
     private static final int TIMEOUT = 10; // миллисекунды
-    private static final int packetsToCatch = 5;
+    private static final int packetsToCatch = 20;
 
     //размеры кусков arp-пакета (в байтах)
     private static final int HTYPE_SIZE = 2;
@@ -23,9 +23,6 @@ public class PcapProcesser {
     private static final int HLEN_SIZE = 1;
     private static final int PLEN_SIZE = 1;
     private static final int OPERATION_SIZE = 2;
-
-    private static Integer HARDWARE_ADDRESS_SIZE = null;
-    private static Integer PROTOCOL_ADDRESS_SIZE = null;
 
 
     public PcapProcesser() {
@@ -51,7 +48,7 @@ public class PcapProcesser {
                 byte[] destination_mac_bytes = Arrays.copyOfRange(raw, 0, 6);
                 long destination_mac_number = 0;
                 for (int i = 0; i < 6; i++) {
-                    destination_mac_number += (long)(destination_mac_bytes[i] & 0xFF) << (BYTE_SIZE * i);
+                    destination_mac_number += (long)(destination_mac_bytes[i] & 0xFF) << (BYTE_SIZE * (5 - i));
                 }
                 System.out.println("\tТа часть, которую мы почему-то тоже получили (кажется, должна быть вне ARP-пакета - прям перед ним (в ethernet-пакете - обертке arp)");
                 System.out.println("\t\tDestination MAC(6 bytes) - " + formatMac(destination_mac_number));
@@ -59,7 +56,7 @@ public class PcapProcesser {
                 byte[] source_mac_bytes = Arrays.copyOfRange(raw, 6, 12);
                 long source_mac_number = 0;
                 for (int i = 0; i < 6; i++) {
-                    source_mac_number += (long)(source_mac_bytes[i] & 0xFF) << (BYTE_SIZE * i);
+                    source_mac_number += (long)(source_mac_bytes[i] & 0xFF) << (BYTE_SIZE * (5 - i));
                 }
                 System.out.println("\t\tSource MAC(6 bytes) - " + formatMac(source_mac_number));
                 
@@ -83,6 +80,7 @@ public class PcapProcesser {
                     hardware_type += (hardware_type_bytes[i] & 0xFF) << (BYTE_SIZE * (HTYPE_SIZE - 1 - i));
                     //hardware_type += (hardware_type_bytes[i] & 0xFF) << (BYTE_SIZE * i);
                 }
+                //TODO: добавить обработку исключений для метода fromInt
                 System.out.println("\t\tHardware type - " + hardware_type + " (" + HardwareType.fromInt(hardware_type).toString() +")");
                 current_shift += HTYPE_SIZE;
 
@@ -90,10 +88,11 @@ public class PcapProcesser {
                 byte[] protocol_type_bytes = Arrays.copyOfRange(raw, current_shift, current_shift + PTYPE_SIZE);
                 int protocol_type = 0;
                 for (int i = 0; i < PTYPE_SIZE; i++) {
-                    //protocol_type += (protocol_type_bytes[i] & 0xFF) << (BYTE_SIZE * (PTYPE_SIZE - 1 - i));
-                    protocol_type += (protocol_type_bytes[i] & 0xFF) << (BYTE_SIZE * i);
+                    protocol_type += (protocol_type_bytes[i] & 0xFF) << (BYTE_SIZE * (PTYPE_SIZE - 1 - i));
+                    //protocol_type += (protocol_type_bytes[i] & 0xFF) << (BYTE_SIZE * i);
                 }
-                System.out.println("\t\tProtocol type - " + protocol_type);
+                //TODO: добавить обработку исключений для метода fromInt
+                System.out.println("\t\tProtocol type - " + protocol_type + " (" + ProtocolType.fromInt(protocol_type).toString() +")");
                 current_shift += PTYPE_SIZE;
 
                 // hardware address len
@@ -107,38 +106,48 @@ public class PcapProcesser {
                 current_shift += HLEN_SIZE;
 
                 byte[] protocol_type_len_bytes = Arrays.copyOfRange(raw, current_shift, current_shift + PLEN_SIZE);
-                int protocol_type_len = 0;
+                int protocol_address_len = 0;
                 for (int i = 0; i < PLEN_SIZE; i++) {
-                    //protocol_type_len += (protocol_type_len_bytes[i] & 0xFF) << (BYTE_SIZE * (PLEN_SIZE - 1 - i));
-                    protocol_type_len += (protocol_type_len_bytes[i] & 0xFF) << (BYTE_SIZE * i);
+                    //protocol_address_len += (protocol_type_len_bytes[i] & 0xFF) << (BYTE_SIZE * (PLEN_SIZE - 1 - i));
+                    protocol_address_len += (protocol_type_len_bytes[i] & 0xFF) << (BYTE_SIZE * i);
                 }
-                System.out.println("\t\tProtocol type len - " + protocol_type_len);
+                System.out.println("\t\tProtocol address len - " + protocol_address_len);
                 current_shift += PLEN_SIZE;
 
                 // Operation type
                 byte[] operation_type_bytes = Arrays.copyOfRange(raw, current_shift, current_shift + OPERATION_SIZE);
                 int operation_type = 0;
                 for (int i = 0; i < OPERATION_SIZE; i++) {
-                    //operation_type += (operation_type_bytes[i] & 0xFF) << (BYTE_SIZE * (OPERATION_SIZE - 1 - i));
-                    operation_type += (operation_type_bytes[i] & 0xFF) << (BYTE_SIZE * i);
+                    operation_type += (operation_type_bytes[i] & 0xFF) << (BYTE_SIZE * (OPERATION_SIZE - 1 - i));
+                    //operation_type += (operation_type_bytes[i] & 0xFF) << (BYTE_SIZE * i);
                 }
-                System.out.println("\t\tOperation type - " + operation_type);
+                //TODO: добавить обработку исключений для метода fromInt
+                System.out.println("\t\tOperation type - " + operation_type + " (" + OperationType.fromInt(operation_type).toString() + ")");
                 current_shift += OPERATION_SIZE;
 
-                
+                Integer SumSizesOfConstSizeFields = current_shift;
 
-                HARDWARE_ADDRESS_SIZE = Integer.valueOf(hardware_address_len);
-                PROTOCOL_ADDRESS_SIZE = Integer.valueOf(protocol_type_len);
+                System.out.println("\tОставшиеся поля - IP и mac адреса отправителя и получателя:\n");
+                System.out.println("\tРаспаршенные:");
+
+                Integer HARDWARE_ADDRESS_SIZE = Integer.valueOf(hardware_address_len);
+                Integer PROTOCOL_ADDRESS_SIZE = Integer.valueOf(protocol_address_len);
 
                 // sender hardware address
                 byte[] sender_hardware_adress_bytes = Arrays.copyOfRange(raw, current_shift, current_shift + HARDWARE_ADDRESS_SIZE);
                 Long sender_hardware_adress = Long.valueOf(0);
                 for (int i = 0; i < HARDWARE_ADDRESS_SIZE; i++) {
-                    sender_hardware_adress += (sender_hardware_adress_bytes[i] & 0xFF) << (BYTE_SIZE * (HARDWARE_ADDRESS_SIZE - 1 - i));
+                    sender_hardware_adress += ((long)sender_hardware_adress_bytes[i] & 0xFF) << (BYTE_SIZE * (HARDWARE_ADDRESS_SIZE - 1 - i));
                     //sender_hardware_adress += (sender_hardware_adress_bytes[i] & 0xFF) << (BYTE_SIZE * i);
                 }
-                System.out.println("\t\tSender hardware address - " + formatMac(sender_hardware_adress, HARDWARE_ADDRESS_SIZE));
+                System.out.println("\t\tSender hardware address - " + formatMac(sender_hardware_adress/*, HARDWARE_ADDRESS_SIZE*/));
+                System.out.printf("\t\t");
+                for (int i = 0; i < HARDWARE_ADDRESS_SIZE; i++) {
+                    System.out.printf("%02x ", sender_hardware_adress_bytes[i]);
+                }
+                System.out.printf("\n");
                 current_shift += HARDWARE_ADDRESS_SIZE;
+                
 
                 // sender protocol address
                 byte[] sender_protocol_address_bytes = Arrays.copyOfRange(raw, current_shift, current_shift + PROTOCOL_ADDRESS_SIZE);
@@ -154,10 +163,15 @@ public class PcapProcesser {
                 byte[] target_hardware_address_bytes = Arrays.copyOfRange(raw, current_shift, current_shift + HARDWARE_ADDRESS_SIZE);
                 Long target_hardware_address = Long.valueOf(0);
                 for (int i = 0; i < HARDWARE_ADDRESS_SIZE; i++) {
-                    target_hardware_address += (target_hardware_address_bytes[i] & 0xFF) << (BYTE_SIZE * (HARDWARE_ADDRESS_SIZE - 1 - i));
+                    target_hardware_address += ((long)target_hardware_address_bytes[i] & 0xFF) << (BYTE_SIZE * (HARDWARE_ADDRESS_SIZE - 1 - i));
                     //target_hardware_address += (target_hardware_address_bytes[i] & 0xFF) << (BYTE_SIZE * i);
                 }
-                System.out.println("\t\tTarget hardware address - " + formatMac(target_hardware_address, HARDWARE_ADDRESS_SIZE));
+                System.out.println("\t\tTarget hardware address - " + formatMac(target_hardware_address/*, HARDWARE_ADDRESS_SIZE*/));
+                System.out.printf("\t\t");
+                for (int i = 0; i < HARDWARE_ADDRESS_SIZE; i++) {
+                    System.out.printf("%02x ", target_hardware_address_bytes[i]);
+                }
+                System.out.printf("\n");
                 current_shift += HARDWARE_ADDRESS_SIZE;
 
                 // target protocol address
@@ -169,7 +183,19 @@ public class PcapProcesser {
                 }
                 System.out.println("\t\tTarget protocol address - " + formatIp(target_protocol_address));
                 current_shift += PROTOCOL_ADDRESS_SIZE;
-                System.out.println("Конец пакета");
+
+                
+                System.out.println("\tСырые:");
+                
+                //Integer SumSizesOfConstSizeFields = HTYPE_SIZE + PTYPE_SIZE + HLEN_SIZE + PLEN_SIZE + OPERATION_SIZE + 14;
+                for (int i = SumSizesOfConstSizeFields; i < raw.length; i++) {
+                    if ((i - SumSizesOfConstSizeFields) % 8 == 0) {
+                        System.out.print("\n\t\t");
+                    }
+                    System.out.printf("%02x ", raw[i]);
+                }
+
+                System.out.println("\nКонец пакета");
                 System.out.println("========================================");
 
 
@@ -241,9 +267,9 @@ public class PcapProcesser {
     }
     private static String formatMac(long data, long sz) {
         StringBuilder sb = new StringBuilder();
-        for (int i = 0; i < sz; i++) {
+        for (int i = (int)sz - 1; i >= 0; --i) {
             sb.append(String.format("%02x", ((data & ((long)0xFF << (i * 8))) >> (i * 8))));
-            if (i < sz - 1) sb.append(":");
+            if (i > 0) sb.append(":");
         }
         return sb.toString();
     }
@@ -293,8 +319,73 @@ public class PcapProcesser {
             };
         }
     }
+
+    private enum ProtocolType {
+        IPv4 (0x0800);
+
+        private final int protocolType;
+
+        ProtocolType(int protocolType) {
+            this.protocolType = protocolType;
+        }
+
+        public int getProtocolType() {
+            return protocolType;
+        }
+
+        public static ProtocolType fromInt(int value) throws IllegalArgumentException {
+            for (ProtocolType type : ProtocolType.values()) {
+                if (type.getProtocolType() == value) {
+                    return type;
+                }
+            }
+            throw new IllegalArgumentException("Unknown protocol type: " + value);
+        }
+
+        @Override
+        public String toString() {
+            return switch (protocolType) {
+                case 0x0800 -> "IPv4";
+                default -> "Unknown";
+            };
+        }
+    }
+
+
+    private enum OperationType {
+        QUERY (0x0001),
+        RESPONSE (0x0002);
+
+        private final int operationType;
+
+        OperationType(int operationType) {
+            this.operationType = operationType;
+        }
+
+        public int getOperationType() {
+            return operationType;
+        }
+
+        public static OperationType fromInt(int value) throws IllegalArgumentException {
+            for (OperationType type : OperationType.values()) {
+                if (type.getOperationType() == value) {
+                    return type;
+                }
+            }
+            throw new IllegalArgumentException("Unknown protocol type: " + value);
+        }
+
+        @Override
+        public String toString() {
+            return switch (operationType) {
+                case 0x0001 -> "QUERY";
+                case 0x0002 -> "RESPONSE";
+                default -> "Unknown";
+            };
+        }
+    }
     
-    private static String getOperationName(int operation) {
+    /*private static String getOperationName(int operation) {
         switch (operation) {
             case 1: return "ARP REQUEST";
             case 2: return "ARP REPLY";
@@ -313,4 +404,5 @@ public class PcapProcesser {
         }
         return "Неизвестная операция";
     }
+    */
 }
