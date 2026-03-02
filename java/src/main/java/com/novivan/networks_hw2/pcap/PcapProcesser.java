@@ -80,10 +80,10 @@ public class PcapProcesser {
                 byte[] hardware_type_bytes = Arrays.copyOfRange(raw, current_shift, current_shift + HTYPE_SIZE);
                 int hardware_type = 0;
                 for (int i = 0; i < HTYPE_SIZE; i++) {
-                    //hardware_type += (hardware_type_bytes[i] & 0xFF) << (BYTE_SIZE * (HTYPE_SIZE - 1 - i));
-                    hardware_type += (hardware_type_bytes[i] & 0xFF) << (BYTE_SIZE * i);
+                    hardware_type += (hardware_type_bytes[i] & 0xFF) << (BYTE_SIZE * (HTYPE_SIZE - 1 - i));
+                    //hardware_type += (hardware_type_bytes[i] & 0xFF) << (BYTE_SIZE * i);
                 }
-                System.out.println("\t\tHardware type - " + hardware_type);
+                System.out.println("\t\tHardware type - " + hardware_type + " (" + HardwareType.fromInt(hardware_type).toString() +")");
                 current_shift += HTYPE_SIZE;
 
                 // protocol type
@@ -255,6 +255,43 @@ public class PcapProcesser {
             if (i < 3) sb.append(".");
         }
         return sb.toString();
+    }
+
+    private enum HardwareType {
+        Ethernet (1),
+        IEEE (6),
+        FrameRelay (15),
+        SerialLine (20);
+
+        private final int hardwareType;
+
+        HardwareType(int hardwareType) {
+            this.hardwareType = hardwareType;
+        }
+
+        public int getHardwareType() {
+            return hardwareType;
+        }
+
+        public static HardwareType fromInt(int value) throws IllegalArgumentException {
+            for (HardwareType type : HardwareType.values()) {
+                if (type.getHardwareType() == value) {
+                    return type;
+                }
+            }
+            throw new IllegalArgumentException("Unknown hardware type: " + value);
+        }
+
+        @Override
+        public String toString() {
+            return switch (hardwareType) {
+                case 1 -> "Ethernet";
+                case 6 -> "IEEE 802";
+                case 15 -> "FrameRelay";
+                case 20 -> "SerialLine";
+                default -> "Unknown";
+            };
+        }
     }
     
     private static String getOperationName(int operation) {
