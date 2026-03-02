@@ -30,6 +30,12 @@
             <!-- https://github.com/kaitoy/pcap4j/blob/v1/pom.xml#L108C7-L112C20 -->
             <!-- вот по этой ссылке видно, что зависимость реально есть в исходной библиотеке -->
         </dependency>
+        <dependency>
+            <!-- Чтоб не было мусорных логов-->
+            <groupId>org.slf4j</groupId>
+            <artifactId>slf4j-nop</artifactId>
+            <version>1.7.36</version>
+        </dependency>
     </dependencies>
 
     <build>
