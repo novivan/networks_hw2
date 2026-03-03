@@ -57,7 +57,7 @@ public class Dialoger {
                             System.out.println();
                             System.out.println();
                             System.out.println("РЕЗУЛЬТАТ: MAC-адрес роутера (" + routerIp + "): " + mac);
-                            System.out.println("----------------------------------------");
+                            System.out.println("");
                         }
                     } catch (Exception e) {
                         System.out.printf("Ошибка при получении MAC-адреса: %s%n", e.getMessage());
@@ -76,10 +76,32 @@ public class Dialoger {
                     
                 default:
                     if (inp.startsWith(DialogerUtils.STATISTICS_PREFIX)) {
-                        String usefulInfo = inp.substring(DialogerUtils.STATISTICS_PREFIX.length());
+                        String usefulInfo = inp.substring(DialogerUtils.STATISTICS_PREFIX.length()).trim();
                         try {
                             int seconds = Integer.parseInt(usefulInfo.split(" ")[0]);
+                            
+                            System.out.println("Для подсчёта трафика с роутером нужен его IP-адрес.");
+                            System.out.println("Команда для определения IP роутера: netstat -rn | grep default");
+                            System.out.print("Введите IP-адрес роутера (или Enter для пропуска): ");
+                            String routerIpForStats = reader.nextLine().trim();
+                            
+                            if (!routerIpForStats.isEmpty() && !isValidIpAddress(routerIpForStats)) {
+                                System.out.println("Некорректный формат IP-адреса, трафик с роутером не будет подсчитан");
+                                routerIpForStats = null;
+                            }
+
                             System.out.printf("Собираю статистику на протяжении %d секунд...%n", seconds);
+
+                            try {
+                                PcapProcesser.NetworkStatistics stats = processer.collectStatistics(seconds, routerIpForStats);
+                                if (stats != null) {
+                                    System.out.println(stats.toString());
+                                }
+                            } catch (Exception e) {
+                                System.out.printf("Ошибка при сборе статистики: %s%n", e.getMessage());
+                                e.printStackTrace();
+                            }
+                            
                         } catch (NumberFormatException e) {
                             System.out.println("Неправильно введена команда");
                             System.out.printf("\tОшибка: %s%n", e.getMessage());
@@ -94,9 +116,6 @@ public class Dialoger {
         reader.close();
     }
     
-    /**
-     * Проверяет корректность формата IPv4 адреса
-     */
     private boolean isValidIpAddress(String ip) {
         if (ip == null || ip.isEmpty()) {
             return false;

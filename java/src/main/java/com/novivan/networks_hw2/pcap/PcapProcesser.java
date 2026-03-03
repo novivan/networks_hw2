@@ -3,6 +3,10 @@ package com.novivan.networks_hw2.pcap;
 import java.net.InetAddress;
 import java.net.NetworkInterface;
 import java.util.Arrays;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.atomic.AtomicReference;
 
 import org.pcap4j.core.BpfProgram;
@@ -42,7 +46,7 @@ public class PcapProcesser {
 
             System.out.println("Захват ARP-пакетов...");
 
-            System.out.println("========================================");
+            System.out.println("");
 
             handle.loop(packetsToCatch, (PacketListener) (packet) -> {
                 byte[] raw = packet.getRawData();
@@ -161,7 +165,7 @@ public class PcapProcesser {
                 }
 
                 System.out.println("\nКонец пакета");
-                System.out.println("========================================");
+                System.out.println("");
             });
             System.out.println("Установленное кол-во пакетов(" + packetsToCatch + ") получено! Операция завершена");
         } catch (Exception e) {
@@ -403,5 +407,185 @@ public class PcapProcesser {
                 default -> "Unknown";
             };
         }
+    }
+
+    public static class NetworkStatistics {
+        public int totalEthernetFrames = 0;
+        public int totalArpPackets = 0;
+        public Set<String> uniqueMacAddresses = new HashSet<>();
+        public int broadcastEthernetFrames = 0;
+        public int broadcastArpPackets = 0;
+        public int gratuitousArpRequests = 0;
+        public int arpRequestResponsePairs = 0;
+        public long bytesWithRouter = 0;
+        
+        public Map<String, Long> pendingArpRequests = new HashMap<>();
+        
+        public String routerMac = null;
+        public String ourMac = null;
+        
+        @Override
+        public String toString() {
+            StringBuilder sb = new StringBuilder();
+            sb.append("\n");
+            sb.append("         СТАТИСТИКА СЕТИ\n");
+            sb.append("\n");
+            
+            sb.append("1. Ethernet фреймов передано: ").append(totalEthernetFrames).append("\n");
+            sb.append("   ARP пакетов: ").append(totalArpPackets).append("\n\n");
+            
+            sb.append("2. Уникальных MAC-адресов обнаружено: ").append(uniqueMacAddresses.size()).append("\n");
+            sb.append("   Список MAC-адресов:\n");
+            for (String mac : uniqueMacAddresses) {
+                sb.append("\t - ").append(mac).append("\n");
+            }
+            sb.append("\n");
+            
+            sb.append("3. Широковещательных Ethernet сообщений: ").append(broadcastEthernetFrames).append("\n");
+            sb.append("   Из них с ARP: ").append(broadcastArpPackets).append("\n\n");
+            
+            sb.append("4. Gratuitous ARP Requests: ").append(gratuitousArpRequests).append("\n\n");
+            
+            sb.append("5. Пар ARP request/response: ").append(arpRequestResponsePairs).append("\n\n");
+            
+            sb.append("6. Объём данных между устройством и роутером: ").append(bytesWithRouter).append(" байт\n");
+            
+            sb.append("\n");
+            return sb.toString();
+        }
+    }
+
+    public NetworkStatistics collectStatistics(int seconds, String routerIp) throws Exception {
+        PcapNetworkInterface nif = Pcaps.getDevByName(DEVICE);
+        if (nif == null) {
+            System.err.println("Сетевой интерфейс не найден");
+            return null;
+        }
+
+        NetworkStatistics stats = new NetworkStatistics();
+        
+        NetworkInterface netIf = NetworkInterface.getByName(DEVICE);
+        byte[] ourMacBytes = netIf.getHardwareAddress();
+        if (ourMacBytes != null) {
+            stats.ourMac = formatMacBytes(ourMacBytes);
+        }
+        
+        String routerMac = null;
+        if (routerIp != null && !routerIp.isEmpty()) {
+            System.out.println("Определяем MAC-адрес роутера...");
+            routerMac = getRouterMac(routerIp);
+            stats.routerMac = routerMac;
+            if (routerMac != null) {
+                System.out.println("MAC роутера: " + routerMac);
+            }
+        }
+        
+        final String finalRouterMac = routerMac;
+        final long endTime = System.currentTimeMillis() + (seconds * 1000L);
+
+        System.out.println("\nСбор статистики в течение " + seconds + " секунд...\n");
+
+        try (PcapHandle handle = nif.openLive(SNAPLEN, PcapNetworkInterface.PromiscuousMode.PROMISCUOUS, 1000)) {
+            
+            final long[] endTimeHolder = {endTime};
+            final NetworkStatistics finalStats = stats;
+            final String fRouterMac = finalRouterMac;
+            
+            Thread captureThread = new Thread(() -> {
+                try {
+                    handle.loop(-1, (PacketListener) (packet) -> {
+                        if (System.currentTimeMillis() >= endTimeHolder[0]) {
+                            try {
+                                handle.breakLoop();
+                            } catch (Exception e) {}
+                            return;
+                        }
+                        
+                        try {
+                            byte[] raw = packet.getRawData();
+                            if (raw == null || raw.length < 14) return;
+                            
+                            finalStats.totalEthernetFrames++;
+                            
+                            String dstMac = formatMacBytes(Arrays.copyOfRange(raw, 0, 6));
+                            String srcMac = formatMacBytes(Arrays.copyOfRange(raw, 6, 12));
+                            
+                            finalStats.uniqueMacAddresses.add(srcMac);
+                            if (!dstMac.equals("ff:ff:ff:ff:ff:ff")) {
+                                finalStats.uniqueMacAddresses.add(dstMac);
+                            }
+                            
+                            boolean isBroadcast = dstMac.equals("ff:ff:ff:ff:ff:ff");
+                            if (isBroadcast) {
+                                finalStats.broadcastEthernetFrames++;
+                            }
+                            
+                            int etherType = ((raw[12] & 0xFF) << 8) | (raw[13] & 0xFF);
+                            boolean isArp = (etherType == 0x0806);
+                            
+                            if (isArp && raw.length >= 42) {
+                                finalStats.totalArpPackets++;
+                                
+                                if (isBroadcast) {
+                                    finalStats.broadcastArpPackets++;
+                                }
+                                
+                                int operation = ((raw[20] & 0xFF) << 8) | (raw[21] & 0xFF);
+                                String senderMac = formatMacBytes(Arrays.copyOfRange(raw, 22, 28));
+                                String senderIp = formatIpBytes(Arrays.copyOfRange(raw, 28, 32));
+                                String targetMac = formatMacBytes(Arrays.copyOfRange(raw, 32, 38));
+                                String targetIp = formatIpBytes(Arrays.copyOfRange(raw, 38, 42));
+                                
+                                if (operation == 1 && senderIp.equals(targetIp)) {
+                                    finalStats.gratuitousArpRequests++;
+                                }
+                                
+                                if (operation == 1) {
+                                    String key = senderIp + "->" + targetIp;
+                                    finalStats.pendingArpRequests.put(key, System.currentTimeMillis());
+                                } else if (operation == 2) {
+                                    String key = targetIp + "->" + senderIp;
+                                    if (finalStats.pendingArpRequests.containsKey(key)) {
+                                        long requestTime = finalStats.pendingArpRequests.get(key);
+                                        if (System.currentTimeMillis() - requestTime < 5000) {
+                                            finalStats.arpRequestResponsePairs++;
+                                        }
+                                        finalStats.pendingArpRequests.remove(key);
+                                    }
+                                }
+                            }
+                            
+                            if (fRouterMac != null && finalStats.ourMac != null) {
+                                if ((srcMac.equals(fRouterMac) && dstMac.equals(finalStats.ourMac)) ||
+                                    (srcMac.equals(finalStats.ourMac) && dstMac.equals(fRouterMac))) {
+                                    finalStats.bytesWithRouter += raw.length;
+                                }
+                            }
+                        } catch (Exception e) {}
+                    });
+                } catch (Exception e) {}
+            });
+            
+            captureThread.start();
+            
+            Thread.sleep(seconds * 1000L + 500);
+            
+            try {
+                handle.breakLoop();
+            } catch (Exception e) {}
+            
+            captureThread.join(2000);
+        }
+        
+        return stats;
+    }
+    
+    private static String formatIpBytes(byte[] ip) {
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; i < ip.length; i++) {
+            sb.append(ip[i] & 0xFF);
+            if (i < ip.length - 1) sb.append(".");
+        }
+        return sb.toString();
     }
 }
