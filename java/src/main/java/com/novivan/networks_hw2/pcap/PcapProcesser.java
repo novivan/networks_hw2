@@ -22,7 +22,7 @@ public class PcapProcesser {
     private static final String FILTER = "arp";
     private static final int SNAPLEN = 500;
     private static final int TIMEOUT = 10; // миллисекунды
-    private static final int packetsToCatch = 20;
+    private static final int packetsToCatch = 7;
 
     //размеры кусков arp-пакета (в байтах)
     private static final int HTYPE_SIZE = 2;
