@@ -6,16 +6,15 @@ import java.util.Scanner;
 public class Dialoger {
     private final PcapProcesser processer;
 
-    public Dialoger() {
+    public Dialoger() throws Exception {
         this.processer = new PcapProcesser();
     }
 
     public void run() throws Exception {
         Scanner reader = new Scanner(System.in);
         boolean wannaBreak = false;
-        
-        for (int iteration = 0; !wannaBreak; iteration++) {
-            if (iteration == 0) {
+        for (boolean is_first_iteration = true; !wannaBreak; is_first_iteration = false) {
+            if (is_first_iteration) {
                 System.out.println(DialogerUtils.INTRODUCTION);
             }
             
@@ -82,10 +81,10 @@ public class Dialoger {
                             
                             System.out.println("Для подсчёта трафика с роутером нужен его IP-адрес.");
                             System.out.println("Команда для определения IP роутера: netstat -rn | grep default");
-                            System.out.print("Введите IP-адрес роутера (или Enter для пропуска): ");
+                            System.out.print("Введите IP-адрес роутера: ");
                             String routerIpForStats = reader.nextLine().trim();
                             
-                            if (!routerIpForStats.isEmpty() && !isValidIpAddress(routerIpForStats)) {
+                            if (routerIpForStats.isEmpty() || !isValidIpAddress(routerIpForStats)) {
                                 System.out.println("Некорректный формат IP-адреса, трафик с роутером не будет подсчитан");
                                 routerIpForStats = null;
                             }
@@ -110,10 +109,12 @@ public class Dialoger {
                     } else {
                         System.out.println("Команда введена неправильно. Для просмотра доступных команд введите \"help\" + Enter");
                     }
-                    break;
             }
         }
         reader.close();
+        if (processer != null) {
+            processer.close();
+        }
     }
     
     private boolean isValidIpAddress(String ip) {

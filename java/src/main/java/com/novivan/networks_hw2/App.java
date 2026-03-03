@@ -5,8 +5,8 @@ import com.novivan.networks_hw2.dialoger.Dialoger;
 
 public class App {
     public static void main(String[] args) {
-        Dialoger dialoger = new Dialoger();
         try {
+            Dialoger dialoger = new Dialoger();
             dialoger.run();
             System.out.println("Работа приложения завершилась успешно!");
         } catch (Exception e) {

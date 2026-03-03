@@ -9,6 +9,8 @@ import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicReference;
 
+import org.pcap4j.core.PcapNativeException;
+
 import org.pcap4j.core.BpfProgram;
 import org.pcap4j.core.PacketListener;
 import org.pcap4j.core.PcapHandle;
@@ -23,6 +25,9 @@ public class PcapProcesser {
     private static final int SNAPLEN = 500;
     private static final int TIMEOUT = 10; // миллисекунды
     private static final int packetsToCatch = 7;
+    
+    private PcapHandle sharedHandle = null;
+    private PcapNetworkInterface nif = null;
 
     //размеры кусков arp-пакета (в байтах)
     private static final int HTYPE_SIZE = 2;
@@ -32,23 +37,33 @@ public class PcapProcesser {
     private static final int OPERATION_SIZE = 2;
 
 
-    public PcapProcesser() {
+    public PcapProcesser() throws Exception {
+        nif = Pcaps.getDevByName(DEVICE); // писал на маке, сделал под него
+        if (nif == null) {
+            throw new Exception("Сетевой интерфейс не найден");
+        }
+        sharedHandle = nif.openLive(SNAPLEN, PcapNetworkInterface.PromiscuousMode.PROMISCUOUS, TIMEOUT);
+    }
+    
+    public void close() {
+        if (sharedHandle != null) {
+            sharedHandle.close();
+            sharedHandle = null;
+        }
     }
 
     public String handleAllPackets() throws Exception {
-        PcapNetworkInterface nif = Pcaps.getDevByName(DEVICE); // писал на маке, сделал под него
-        if (nif == null) {
-            System.err.println("Сетевой интерфейс не найден");
-            return null;
+        if (sharedHandle == null) {
+            throw new Exception("PcapHandle не инициализирован");
         }
-        try (PcapHandle handle = nif.openLive(SNAPLEN, PcapNetworkInterface.PromiscuousMode.PROMISCUOUS, TIMEOUT)) {
-            handle.setFilter(FILTER, BpfProgram.BpfCompileMode.OPTIMIZE);
+        
+        sharedHandle.setFilter(FILTER, BpfProgram.BpfCompileMode.OPTIMIZE);
 
             System.out.println("Захват ARP-пакетов...");
 
             System.out.println("");
 
-            handle.loop(packetsToCatch, (PacketListener) (packet) -> {
+        sharedHandle.loop(packetsToCatch, (PacketListener) (packet) -> {
                 byte[] raw = packet.getRawData();
 
                 System.out.println("Ethernet-frame с ARP-пакетом получен! Длина фрейма - " + raw.length + " байт.");
@@ -167,18 +182,13 @@ public class PcapProcesser {
                 System.out.println("\nКонец пакета");
                 System.out.println("");
             });
-            System.out.println("Установленное кол-во пакетов(" + packetsToCatch + ") получено! Операция завершена");
-        } catch (Exception e) {
-           e.printStackTrace();
-        }
+        System.out.println("Установленное кол-во пакетов(" + packetsToCatch + ") получено! Операция завершена");
         return null;
     }
 
     public String getRouterMac(String targetIp) throws Exception {
-        PcapNetworkInterface nif = Pcaps.getDevByName(DEVICE);
-        if (nif == null) {
-            System.err.println("Сетевой интерфейс не найден");
-            return null;
+        if (sharedHandle == null) {
+            throw new Exception("PcapHandle не инициализирован");
         }
 
         NetworkInterface netIf = NetworkInterface.getByName(DEVICE);
@@ -213,31 +223,26 @@ public class PcapProcesser {
 
         AtomicReference<String> resultMac = new AtomicReference<>(null);
 
-        try (PcapHandle sendHandle = nif.openLive(SNAPLEN, PcapNetworkInterface.PromiscuousMode.PROMISCUOUS, TIMEOUT);
-             PcapHandle receiveHandle = nif.openLive(SNAPLEN, PcapNetworkInterface.PromiscuousMode.PROMISCUOUS, 5000)) {
-            
-            receiveHandle.setFilter("arp and arp[6:2] = 2", BpfProgram.BpfCompileMode.OPTIMIZE);
+        sharedHandle.setFilter("arp and arp[6:2] = 2", BpfProgram.BpfCompileMode.OPTIMIZE);
 
-            sendHandle.sendPacket(arpRequest);
+        sharedHandle.sendPacket(arpRequest);
             System.out.println("ARP-запрос отправлен!");
 
             long startTime = System.currentTimeMillis();
             while (System.currentTimeMillis() - startTime < 5000) {
                 try {
-                    var packet = receiveHandle.getNextPacket();
-                    if (packet != null) {
-                        byte[] raw = packet.getRawData();
-                        if (raw.length >= 42) {
-                            int operation = ((raw[20] & 0xFF) << 8) | (raw[21] & 0xFF);
-                            if (operation == 2) {
-                                byte[] senderIp = Arrays.copyOfRange(raw, 28, 32);
-                                if (Arrays.equals(senderIp, targetIpBytes)) {
-                                    byte[] senderMac = Arrays.copyOfRange(raw, 22, 28);
-                                    resultMac.set(formatMacBytes(senderMac));
-                                    System.out.println("\nПолучен ARP-ответ!");
-                                    System.out.println("MAC-адрес " + targetIp + ": " + resultMac.get());
-                                    break;
-                                }
+                    var packet = sharedHandle.getNextPacketEx();
+                    byte[] raw = packet.getRawData();
+                    if (raw.length >= 42) {
+                        int operation = ((raw[20] & 0xFF) << 8) | (raw[21] & 0xFF);
+                        if (operation == 2) {
+                            byte[] senderIp = Arrays.copyOfRange(raw, 28, 32);
+                            if (Arrays.equals(senderIp, targetIpBytes)) {
+                                byte[] senderMac = Arrays.copyOfRange(raw, 22, 28);
+                                resultMac.set(formatMacBytes(senderMac));
+                                System.out.println("\nПолучен ARP-ответ!");
+                                System.out.println("MAC-адрес " + targetIp + ": " + resultMac.get());
+                                break;
                             }
                         }
                     }
@@ -247,7 +252,9 @@ public class PcapProcesser {
             if (resultMac.get() == null) {
                 System.out.println("Не удалось получить ARP-ответ в течение 5 секунд");
             }
-        }
+
+        // Восстанавливаем исходный фильтр
+        sharedHandle.setFilter(FILTER, BpfProgram.BpfCompileMode.OPTIMIZE);
 
         return resultMac.get();
     }
@@ -269,6 +276,7 @@ public class PcapProcesser {
         packet[19] = 0x04;
         packet[20] = 0x00;
         packet[21] = 0x01;
+
         System.arraycopy(senderMac, 0, packet, 22, 6);
         System.arraycopy(senderIp, 0, packet, 28, 4);
         Arrays.fill(packet, 32, 38, (byte) 0x00);
@@ -456,10 +464,8 @@ public class PcapProcesser {
     }
 
     public NetworkStatistics collectStatistics(int seconds, String routerIp) throws Exception {
-        PcapNetworkInterface nif = Pcaps.getDevByName(DEVICE);
-        if (nif == null) {
-            System.err.println("Сетевой интерфейс не найден");
-            return null;
+        if (sharedHandle == null) {
+            throw new Exception("PcapHandle не инициализирован");
         }
 
         NetworkStatistics stats = new NetworkStatistics();
@@ -485,7 +491,7 @@ public class PcapProcesser {
 
         System.out.println("\nСбор статистики в течение " + seconds + " секунд...\n");
 
-        try (PcapHandle handle = nif.openLive(SNAPLEN, PcapNetworkInterface.PromiscuousMode.PROMISCUOUS, 1000)) {
+        sharedHandle.setFilter("", BpfProgram.BpfCompileMode.OPTIMIZE);
             
             final long[] endTimeHolder = {endTime};
             final NetworkStatistics finalStats = stats;
@@ -493,11 +499,13 @@ public class PcapProcesser {
             
             Thread captureThread = new Thread(() -> {
                 try {
-                    handle.loop(-1, (PacketListener) (packet) -> {
+                    sharedHandle.loop(-1, (PacketListener) (packet) -> {
                         if (System.currentTimeMillis() >= endTimeHolder[0]) {
                             try {
-                                handle.breakLoop();
-                            } catch (Exception e) {}
+                                sharedHandle.breakLoop();
+                            } catch (Exception e) {
+                                // Игнорируем исключения при breakLoop
+                            }
                             return;
                         }
                         
@@ -561,9 +569,13 @@ public class PcapProcesser {
                                     finalStats.bytesWithRouter += raw.length;
                                 }
                             }
-                        } catch (Exception e) {}
+                        } catch (Exception e) {
+                            // Игнорируем исключения при обработке пакетов
+                        }
                     });
-                } catch (Exception e) {}
+                } catch (Exception e) {
+                    // Игнорируем исключения в потоке захвата
+                }
             });
             
             captureThread.start();
@@ -571,11 +583,15 @@ public class PcapProcesser {
             Thread.sleep(seconds * 1000L + 500);
             
             try {
-                handle.breakLoop();
-            } catch (Exception e) {}
+                sharedHandle.breakLoop();
+            } catch (Exception e) {
+                // Игнорируем исключения при breakLoop
+            }
             
             captureThread.join(2000);
-        }
+
+        // Восстанавливаем исходный фильтр
+        sharedHandle.setFilter(FILTER, BpfProgram.BpfCompileMode.OPTIMIZE);
         
         return stats;
     }
