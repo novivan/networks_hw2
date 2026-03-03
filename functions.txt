@@ -9,17 +9,18 @@ Dialoger.java (java/src/main/java/com/novivan/networks_hw2/dialoger/Dialoger.jav
   isValidIpAddress() - строка 119 - проверка формата IP-адреса
 
 PcapProcesser.java (java/src/main/java/com/novivan/networks_hw2/pcap/PcapProcesser.java)
-  PcapProcesser() - строка 35 - конструктор
-  handleAllPackets() - строка 38 - захват и вывод ARP-пакетов
-  getRouterMac() - строка 177 - получение MAC роутера по IP
-  buildArpRequest() - строка 255 - формирование ARP-запроса
-  formatMacBytes() - строка 280 - форматирование MAC из байтов
-  formatMac() - строка 289, 292 - форматирование MAC из long
-  formatIp() - строка 301 - форматирование IP из long
-  collectStatistics() - строка 458 - сбор статистики трафика
-  formatIpBytes() - строка 583 - форматирование IP из байтов
+  PcapProcesser() - строка 38 - конструктор
+  close() - строка 46 - освобождение ресурсов
+  handleAllPackets() - строка 53 - захват и вывод ARP-пакетов
+  getRouterMac() - строка 187 - получение MAC роутера по IP
+  buildArpRequest() - строка 273 - формирование ARP-запроса
+  formatMacBytes() - строка 298 - форматирование MAC из байтов
+  formatMac() - строка 307, 310 - форматирование MAC из long
+  formatIp() - строка 319 - форматирование IP из long
+  collectStatistics() - строка 476 - сбор статистики трафика
+  formatIpBytes() - строка 618 - форматирование IP из байтов
   
-  enum HardwareType - строка 310 - типы оборудования
-  enum ProtocolType - строка 347 - типы протоколов
-  enum OperationType - строка 379 - типы операций ARP
-  class NetworkStatistics - строка 412 - хранение статистики
+  enum HardwareType - строка 328 - типы оборудования
+  enum ProtocolType - строка 365 - типы протоколов
+  enum OperationType - строка 397 - типы операций ARP
+  class NetworkStatistics - строка 430 - хранение статистики
