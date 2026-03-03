@@ -110,6 +110,7 @@ public class Dialoger {
                         System.out.println("Команда введена неправильно. Для просмотра доступных команд введите \"help\" + Enter");
                     }
             }
+            System.out.println("-".repeat(35));
         }
         reader.close();
         if (processer != null) {
