@@ -1,0 +1,25 @@
+Перечень функций проекта
+
+App.java (java/src/main/java/com/novivan/networks_hw2/App.java)
+  main() - строка 7 - точка входа в приложение
+
+Dialoger.java (java/src/main/java/com/novivan/networks_hw2/dialoger/Dialoger.java)
+  Dialoger() - строка 9 - конструктор
+  run() - строка 13 - основной цикл обработки команд
+  isValidIpAddress() - строка 119 - проверка формата IP-адреса
+
+PcapProcesser.java (java/src/main/java/com/novivan/networks_hw2/pcap/PcapProcesser.java)
+  PcapProcesser() - строка 35 - конструктор
+  handleAllPackets() - строка 38 - захват и вывод ARP-пакетов
+  getRouterMac() - строка 177 - получение MAC роутера по IP
+  buildArpRequest() - строка 255 - формирование ARP-запроса
+  formatMacBytes() - строка 280 - форматирование MAC из байтов
+  formatMac() - строка 289, 292 - форматирование MAC из long
+  formatIp() - строка 301 - форматирование IP из long
+  collectStatistics() - строка 458 - сбор статистики трафика
+  formatIpBytes() - строка 583 - форматирование IP из байтов
+  
+  enum HardwareType - строка 310 - типы оборудования
+  enum ProtocolType - строка 347 - типы протоколов
+  enum OperationType - строка 379 - типы операций ARP
+  class NetworkStatistics - строка 412 - хранение статистики
